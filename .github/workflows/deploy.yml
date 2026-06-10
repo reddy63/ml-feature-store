@@ -1,0 +1,81 @@
+name: Deploy ML Feature Store to AWS
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  AWS_REGION: us-east-1
+  PYTHON_VERSION: '3.12'
+
+jobs:
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run unit tests
+        run: pytest tests/test_features.py -v
+
+  deploy:
+    name: Deploy to AWS
+    runs-on: ubuntu-latest
+    needs: test          # only deploy if tests pass
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ env.AWS_REGION }}
+
+      - name: Provision AWS infrastructure
+        run: bash infrastructure/setup.sh
+
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt
+
+      - name: Deploy Lambda functions
+        run: bash infrastructure/deploy.sh
+
+      - name: Setup CloudWatch alarms
+        run: |
+          export SNS_ARN=$(aws sns list-topics --query 'Topics[?contains(TopicArn,`feature-store-alerts`)].TopicArn' --output text)
+          python monitoring/cloudwatch_alarms.py
+
+      - name: Run smoke test
+        run: |
+          echo "Sending 5 test events to SQS..."
+          python tests/simulate_events.py --count 5
+          echo "Smoke test passed!"
+
+      - name: Deployment summary
+        run: |
+          echo "========================================"
+          echo " Deployment successful!"
+          echo " Branch : ${{ github.ref_name }}"
+          echo " Commit : ${{ github.sha }}"
+          echo " Region : ${{ env.AWS_REGION }}"
+          echo "========================================"
