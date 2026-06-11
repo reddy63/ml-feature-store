@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from uuid import uuid4
 
 REGION      = os.environ.get("AWS_REGION", "us-east-1")
-DYNAMO_TABLE = os.environ.get("DYNAMODB_TABLE", "FeatureStore")
+DYNAMODB_TABLE = os.environ.get("DYNAMODB_TABLE", "FeatureStore")
 S3_BUCKET   = os.environ.get("S3_BUCKET", "feature-store-offline-079755512905")
 
 dynamodb = boto3.resource("dynamodb", region_name=REGION)
