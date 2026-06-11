@@ -70,7 +70,7 @@ bash infrastructure/deploy.sh
 
 ### 5. Send Test Events
 ```bash
-python tests/simulate_events.py --count 100
+aws lambda invoke \n  --function-name producer \n  --payload '{"count": 100}' \n  --cli-binary-format raw-in-base64-out \n  response.json && cat response.json
 ```
 
 ### 6. Query Features via API
@@ -116,7 +116,6 @@ ml-feature-store/
 ├── monitoring/cloudwatch_alarms.py  ← Alarm setup
 ├── tests/
 │   ├── test_features.py             ← Unit tests
-│   └── simulate_events.py           ← Load test simulator
 └── requirements.txt
 ```
 
