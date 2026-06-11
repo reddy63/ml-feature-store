@@ -8,7 +8,7 @@ on:
 
 env:
   AWS_REGION:  us-east-1
-  ACCOUNT_ID:  079755512905
+  ACCOUNT_ID:  "079755512905"
   REGISTRY:    079755512905.dkr.ecr.us-east-1.amazonaws.com
 
 jobs:
