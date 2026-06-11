@@ -7,7 +7,7 @@ on:
     branches: [main]
 
 env:
-  AWS_REGION:  us-east-1
+  DEPLOY_REGION:  us-east-1
   ACCOUNT_ID:  "079755512905"
   REGISTRY:    079755512905.dkr.ecr.us-east-1.amazonaws.com
 
@@ -60,14 +60,14 @@ jobs:
         with:
           aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region:            ${{ env.AWS_REGION }}
+          aws-region:            ${{ env.DEPLOY_REGION }}
 
       # FIX: Create ECR repo in build job BEFORE docker push
       - name: Ensure ECR repository exists
         run: |
           aws ecr create-repository \
             --repository-name feature-store/${{ matrix.lambda.name }} \
-            --region ${{ env.AWS_REGION }} \
+            --region ${{ env.DEPLOY_REGION }} \
             --image-scanning-configuration scanOnPush=true \
             --encryption-configuration encryptionType=AES256 \
             2>/dev/null || echo "ECR repo already exists"
@@ -99,7 +99,7 @@ jobs:
         with:
           aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region:            ${{ env.AWS_REGION }}
+          aws-region:            ${{ env.DEPLOY_REGION }}
 
       - name: Provision AWS Infrastructure
         run: bash infrastructure/setup.sh
@@ -111,7 +111,7 @@ jobs:
         run: |
           REGISTRY=${{ env.REGISTRY }}
           ACCOUNT_ID=${{ env.ACCOUNT_ID }}
-          REGION=${{ env.AWS_REGION }}
+          REGION=${{ env.DEPLOY_REGION }}
           ROLE_ARN="arn:aws:iam::${ACCOUNT_ID}:role/feature-store-lambda-role"
           COMMON_ENV="DYNAMODB_TABLE=FeatureStore,S3_BUCKET=feature-store-offline-${ACCOUNT_ID}"
 
@@ -145,7 +145,7 @@ jobs:
 
       - name: Wire SQS trigger to feature-compute
         run: |
-          REGION=${{ env.AWS_REGION }}
+          REGION=${{ env.DEPLOY_REGION }}
           QUEUE_ARN=$(aws sqs get-queue-attributes \
             --queue-url $(aws sqs get-queue-url --queue-name feature-store-events --query 'QueueUrl' --output text) \
             --attribute-names QueueArn \
@@ -158,7 +158,7 @@ jobs:
 
       - name: Schedule freshness-monitor (every 5 min)
         run: |
-          REGION=${{ env.AWS_REGION }}
+          REGION=${{ env.DEPLOY_REGION }}
           ACCOUNT_ID=${{ env.ACCOUNT_ID }}
           RULE_ARN=$(aws events put-rule \
             --name feature-store-freshness-schedule \
@@ -186,7 +186,7 @@ jobs:
       - name: Smoke test - invoke producer Lambda
         run: |
           echo "Waiting for Lambda to be active..."
-          aws lambda wait function-active --function-name producer --region ${{ env.AWS_REGION }}
+          aws lambda wait function-active --function-name producer --region ${{ env.DEPLOY_REGION }}
           aws lambda invoke \
             --function-name producer \
             --payload '{"count": 10}' \
@@ -200,6 +200,6 @@ jobs:
           echo "========================================"
           echo " Deployment successful!"
           echo " Commit : ${{ github.sha }}"
-          echo " Images : ECR ${{ env.AWS_REGION }}"
+          echo " Images : ECR ${{ env.DEPLOY_REGION }}"
           echo " Lambdas: 4 Docker container functions"
           echo "========================================"
