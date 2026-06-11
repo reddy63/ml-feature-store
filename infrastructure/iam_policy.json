@@ -4,12 +4,14 @@
     {
       "Effect": "Allow",
       "Action": [
+        "sqs:SendMessage",
+        "sqs:GetQueueUrl",
         "sqs:ReceiveMessage",
         "sqs:DeleteMessage",
         "sqs:GetQueueAttributes",
         "sqs:ChangeMessageVisibility"
       ],
-      "Resource": "arn:aws:sqs:us-east-1:079755512905:feature-store-events"
+      "Resource": "arn:aws:sqs:us-east-1:079755512905:*"
     },
     {
       "Effect": "Allow",
