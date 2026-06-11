@@ -62,6 +62,7 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region:            ${{ env.AWS_REGION }}
 
+      # FIX: Create ECR repo in build job BEFORE docker push
       - name: Ensure ECR repository exists
         run: |
           aws ecr create-repository \
@@ -69,7 +70,7 @@ jobs:
             --region ${{ env.AWS_REGION }} \
             --image-scanning-configuration scanOnPush=true \
             --encryption-configuration encryptionType=AES256 \
-            2>/dev/null || echo "ECR repo already exists, continuing..."
+            2>/dev/null || echo "ECR repo already exists"
 
       - name: Login to Amazon ECR
         uses: aws-actions/amazon-ecr-login@v2
@@ -82,7 +83,7 @@ jobs:
           echo "Pushed: $IMAGE_URI"
 
   # ──────────────────────────────────────────
-  # JOB 3: Deploy to AWS
+  # JOB 3: Deploy Lambdas to AWS
   # ──────────────────────────────────────────
   deploy:
     name: Deploy Lambdas to AWS
@@ -117,12 +118,13 @@ jobs:
           deploy_lambda() {
             FUNC=$1; IMAGE_URI=$2; MEMORY=$3; TIMEOUT=$4; ENV=$5
             if aws lambda get-function --function-name $FUNC --region $REGION > /dev/null 2>&1; then
+              echo "Updating $FUNC..."
               aws lambda update-function-code \
                 --function-name $FUNC \
                 --image-uri $IMAGE_URI \
                 --region $REGION > /dev/null
-              echo "Updated: $FUNC"
             else
+              echo "Creating $FUNC..."
               aws lambda create-function \
                 --function-name $FUNC \
                 --package-type Image \
@@ -132,8 +134,8 @@ jobs:
                 --timeout $TIMEOUT \
                 --environment "Variables={$ENV}" \
                 --region $REGION > /dev/null
-              echo "Created: $FUNC"
             fi
+            echo "  Done: $FUNC"
           }
 
           deploy_lambda feature-compute   ${REGISTRY}/feature-store/feature-compute:latest   512 30 "${COMMON_ENV}"
@@ -141,15 +143,50 @@ jobs:
           deploy_lambda freshness-monitor ${REGISTRY}/feature-store/freshness-monitor:latest 128 15 "${COMMON_ENV},STALE_THRESHOLD_SECONDS=300"
           deploy_lambda producer          ${REGISTRY}/feature-store/producer:latest          256 60 "${COMMON_ENV},QUEUE_NAME=feature-store-events"
 
+      - name: Wire SQS trigger to feature-compute
+        run: |
+          REGION=${{ env.AWS_REGION }}
+          QUEUE_ARN=$(aws sqs get-queue-attributes \
+            --queue-url $(aws sqs get-queue-url --queue-name feature-store-events --query 'QueueUrl' --output text) \
+            --attribute-names QueueArn \
+            --query 'Attributes.QueueArn' --output text)
+          aws lambda create-event-source-mapping \
+            --function-name feature-compute \
+            --event-source-arn $QUEUE_ARN \
+            --batch-size 10 \
+            --region $REGION 2>/dev/null || echo "SQS trigger already exists"
+
+      - name: Schedule freshness-monitor (every 5 min)
+        run: |
+          REGION=${{ env.AWS_REGION }}
+          ACCOUNT_ID=${{ env.ACCOUNT_ID }}
+          RULE_ARN=$(aws events put-rule \
+            --name feature-store-freshness-schedule \
+            --schedule-expression "rate(5 minutes)" \
+            --state ENABLED \
+            --query 'RuleArn' --output text)
+          FRESHNESS_ARN="arn:aws:lambda:${REGION}:${ACCOUNT_ID}:function:freshness-monitor"
+          aws lambda add-permission \
+            --function-name freshness-monitor \
+            --statement-id AllowCloudWatchEvents \
+            --action lambda:InvokeFunction \
+            --principal events.amazonaws.com \
+            --source-arn $RULE_ARN \
+            --region $REGION 2>/dev/null || true
+          aws events put-targets \
+            --rule feature-store-freshness-schedule \
+            --targets "Id=freshness-monitor,Arn=${FRESHNESS_ARN}" > /dev/null
+          echo "Freshness monitor scheduled"
+
       - name: Setup CloudWatch alarms
         run: |
           pip install boto3 -q
           python monitoring/cloudwatch_alarms.py
 
-      - name: Smoke test - invoke producer
+      - name: Smoke test - invoke producer Lambda
         run: |
-          echo "Waiting for Lambda to be ready..."
-          sleep 10
+          echo "Waiting for Lambda to be active..."
+          aws lambda wait function-active --function-name producer --region ${{ env.AWS_REGION }}
           aws lambda invoke \
             --function-name producer \
             --payload '{"count": 10}' \
@@ -163,6 +200,6 @@ jobs:
           echo "========================================"
           echo " Deployment successful!"
           echo " Commit : ${{ github.sha }}"
-          echo " Images : ECR us-east-1"
+          echo " Images : ECR ${{ env.AWS_REGION }}"
           echo " Lambdas: 4 Docker container functions"
           echo "========================================"
