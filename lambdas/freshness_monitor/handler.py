@@ -3,7 +3,7 @@ import os
 from datetime import datetime, timezone
 
 REGION       = os.environ.get("AWS_REGION", "us-east-1")
-DYNAMO_TABLE = os.environ.get("DYNAMODB_TABLE", "FeatureStore")
+DYNAMODB_TABLE = os.environ.get("DYNAMODB_TABLE", "FeatureStore")
 STALE_SECS   = int(os.environ.get("STALE_THRESHOLD_SECONDS", "300"))
 
 dynamodb  = boto3.resource("dynamodb", region_name=REGION)

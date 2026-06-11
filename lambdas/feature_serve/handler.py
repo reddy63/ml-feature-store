@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from freshness_check import check_freshness
 
 REGION       = os.environ.get("AWS_REGION", "us-east-1")
-DYNAMO_TABLE = os.environ.get("DYNAMODB_TABLE", "FeatureStore")
+DYNAMODB_TABLE = os.environ.get("DYNAMODB_TABLE", "FeatureStore")
 
 dynamodb = boto3.resource("dynamodb", region_name=REGION)
 
