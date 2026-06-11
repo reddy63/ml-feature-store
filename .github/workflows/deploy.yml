@@ -113,7 +113,7 @@ jobs:
           ACCOUNT_ID=${{ env.ACCOUNT_ID }}
           REGION=${{ env.AWS_REGION }}
           ROLE_ARN="arn:aws:iam::${ACCOUNT_ID}:role/feature-store-lambda-role"
-          COMMON_ENV="AWS_REGION=${REGION},DYNAMODB_TABLE=FeatureStore,S3_BUCKET=feature-store-offline-${ACCOUNT_ID}"
+          COMMON_ENV="DYNAMODB_TABLE=FeatureStore,S3_BUCKET=feature-store-offline-${ACCOUNT_ID}"
 
           deploy_lambda() {
             FUNC=$1; IMAGE_URI=$2; MEMORY=$3; TIMEOUT=$4; ENV=$5
