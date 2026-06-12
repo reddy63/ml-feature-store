@@ -88,21 +88,22 @@ echo "  Stage '\$default' created"
 # ── 6. Lambda invoke permissions ──────────────────────────────────────────────
 echo "[5/6] Granting API Gateway permission to invoke Lambdas..."
 
-aws lambda add-permission \
-  --function-name feature-serve \
-  --statement-id AllowAPIGatewayInvoke \
-  --action lambda:InvokeFunction \
-  --principal apigateway.amazonaws.com \
-  --source-arn "arn:aws:execute-api:${REGION}:${ACCOUNT_ID}:${API_ID}/*" \
-  --region $REGION 2>/dev/null || echo "  (feature-serve permission already set)"
-
-aws lambda add-permission \
-  --function-name producer \
-  --statement-id AllowAPIGatewayInvoke \
-  --action lambda:InvokeFunction \
-  --principal apigateway.amazonaws.com \
-  --source-arn "arn:aws:execute-api:${REGION}:${ACCOUNT_ID}:${API_ID}/*" \
-  --region $REGION 2>/dev/null || echo "  (producer permission already set)"
+for FUNC in feature-serve producer; do
+  # Remove stale statement first (safe to re-run even if API ID changed)
+  aws lambda remove-permission \
+    --function-name $FUNC \
+    --statement-id AllowAPIGatewayInvoke \
+    --region $REGION 2>/dev/null || true
+  # Add fresh permission scoped to current API ID
+  aws lambda add-permission \
+    --function-name $FUNC \
+    --statement-id AllowAPIGatewayInvoke \
+    --action lambda:InvokeFunction \
+    --principal apigateway.amazonaws.com \
+    --source-arn "arn:aws:execute-api:${REGION}:${ACCOUNT_ID}:${API_ID}/*" \
+    --region $REGION > /dev/null
+  echo "  $FUNC permission set ✓"
+done
 
 # ── 7. Output endpoint ────────────────────────────────────────────────────────
 echo "[6/6] Retrieving endpoint..."
