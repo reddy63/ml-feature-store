@@ -18,10 +18,6 @@ echo "  Docker authenticated to ECR"
 
 BASE_DIR=$(dirname $(dirname $0))
 
-# Map: lambda-name -> folder name -> config
-declare -A LAMBDA_CONFIG
-LAMBDA_CONFIG=()
-
 build_and_deploy() {
     FUNC_NAME=$1
     FOLDER=$2
@@ -114,8 +110,13 @@ aws events put-targets \
     --targets "Id=freshness-monitor,Arn=${FRESHNESS_ARN}" > /dev/null
 echo "  Freshness monitor scheduled every 5 minutes"
 
+# Deploy API Gateway
+echo ""
+echo "[+] Deploying API Gateway..."
+bash $(dirname $0)/api_gateway.sh
+
 echo ""
 echo "========================================"
-echo " All 4 Lambdas deployed as Docker images"
+echo " All 4 Lambdas + API Gateway deployed "
 echo " Registry: ${REGISTRY}"
 echo "========================================"

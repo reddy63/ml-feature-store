@@ -62,7 +62,6 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region:            ${{ env.DEPLOY_REGION }}
 
-      # FIX: Create ECR repo in build job BEFORE docker push
       - name: Ensure ECR repository exists
         run: |
           aws ecr create-repository \
@@ -178,6 +177,25 @@ jobs:
             --targets "Id=freshness-monitor,Arn=${FRESHNESS_ARN}" > /dev/null
           echo "Freshness monitor scheduled"
 
+      # ──────────────────────────────────────────
+      # API GATEWAY
+      # ──────────────────────────────────────────
+      - name: Deploy API Gateway
+        run: |
+          chmod +x infrastructure/api_gateway.sh
+          bash infrastructure/api_gateway.sh
+
+      - name: Capture API endpoint
+        id: api_endpoint
+        run: |
+          REGION=${{ env.DEPLOY_REGION }}
+          API_ENDPOINT=$(aws apigatewayv2 get-apis \
+            --region $REGION \
+            --query "Items[?Name=='feature-store-api'].ApiEndpoint" \
+            --output text)
+          echo "endpoint=$API_ENDPOINT" >> $GITHUB_OUTPUT
+          echo "API Endpoint: $API_ENDPOINT"
+
       - name: Setup CloudWatch alarms
         run: |
           pip install boto3 -q
@@ -195,11 +213,27 @@ jobs:
           cat /tmp/producer_response.json
           echo "Smoke test passed!"
 
+      - name: Smoke test - GET /features via API Gateway
+        run: |
+          API_ENDPOINT=${{ steps.api_endpoint.outputs.endpoint }}
+          echo "Testing GET ${API_ENDPOINT}/features?user_id=u001"
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            "${API_ENDPOINT}/features?user_id=u001&features=session_count_30min")
+          echo "HTTP status: $STATUS"
+          # 200 (found) or 404 (no features yet) are both valid — just not 5xx
+          if [[ "$STATUS" == 5* ]]; then
+            echo "ERROR: API Gateway returned $STATUS"
+            exit 1
+          fi
+          echo "API Gateway smoke test passed! ($STATUS)"
+
       - name: Deployment summary
         run: |
           echo "========================================"
           echo " Deployment successful!"
-          echo " Commit : ${{ github.sha }}"
-          echo " Images : ECR ${{ env.DEPLOY_REGION }}"
-          echo " Lambdas: 4 Docker container functions"
+          echo " Commit    : ${{ github.sha }}"
+          echo " Images    : ECR ${{ env.DEPLOY_REGION }}"
+          echo " Lambdas   : 4 Docker container functions"
+          echo " API       : ${{ steps.api_endpoint.outputs.endpoint }}"
+          echo " Routes    : GET /features  POST /ingest"
           echo "========================================"
